@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Sky Dodge</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#87ceeb;font-family:Arial,sans-serif}
+body{touch-action:none}
+#game{position:relative;width:100vw;height:100vh;overflow:hidden;background:
+linear-gradient(#55bdf2 0%,#9cddf7 48%,#dceff4 72%,#7fbd68 73%,#4e8e3f 100%)}
+.cloud{position:absolute;background:rgba(255,255,255,.82);border-radius:999px;filter:blur(1px)}
+.cloud:before,.cloud:after{content:"";position:absolute;background:inherit;border-radius:50%}
+.c1{width:170px;height:38px;top:12%;left:8%}.c1:before{width:65px;height:65px;left:28px;top:-28px}.c1:after{width:80px;height:80px;right:25px;top:-38px}
+.c2{width:220px;height:45px;top:27%;right:-40px}.c2:before{width:75px;height:75px;left:35px;top:-34px}.c2:after{width:90px;height:90px;right:35px;top:-45px}
+#horizon{position:absolute;left:0;right:0;bottom:23%;height:8%;background:linear-gradient(180deg,rgba(49,110,47,.2),rgba(41,96,37,.7));filter:blur(2px)}
+#hud{position:absolute;z-index:20;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;color:#fff;text-shadow:0 2px 4px #234;font-weight:800;font-size:18px}
+.pill{background:rgba(0,0,0,.28);padding:9px 12px;border-radius:14px;backdrop-filter:blur(4px)}
+button{border:0;border-radius:15px;padding:13px 20px;font-size:16px;font-weight:800;cursor:pointer;background:#fff;color:#17324d;box-shadow:0 5px 15px rgba(0,0,0,.2)}
+#player{position:absolute;z-index:10;bottom:25%;left:50%;width:min(26vw,125px);max-height:27vh;object-fit:contain;transform:translateX(-50%);user-select:none;pointer-events:none;filter:drop-shadow(0 8px 5px rgba(0,0,0,.28))}
+#box{position:absolute;z-index:9;display:none;width:64px;height:64px;border-radius:7px;
+background:linear-gradient(135deg,#c98a45,#9b5b24);border:3px solid #713d16;
+box-shadow:inset 7px 7px 10px rgba(255,255,255,.2),7px 12px 15px rgba(0,0,0,.25)}
+#box:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:5px;transform:translateX(-50%);background:rgba(94,49,17,.65)}
+#box:before{content:"";position:absolute;top:50%;left:0;right:0;height:5px;transform:translateY(-50%);background:rgba(94,49,17,.55)}
+#overlay{position:absolute;z-index:30;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:25px;background:rgba(0,30,50,.18)}
+.card{width:min(92vw,430px);padding:30px 22px;border-radius:25px;background:rgba(255,255,255,.9);box-shadow:0 15px 50px rgba(0,0,0,.25);backdrop-filter:blur(8px)}
+h1{margin:0 0 8px;font-size:44px;letter-spacing:2px;color:#17324d}
+p{color:#40556a;line-height:1.5}
+.hidden{display:none!important}
+#message{font-size:28px;font-weight:900;margin:12px 0;color:#9b2c2c}
+#touchHint{position:absolute;z-index:15;bottom:6%;left:50%;transform:translateX(-50%);color:#fff;text-shadow:0 2px 4px #234;font-weight:700;opacity:.8}
+@media(max-height:650px){#player{bottom:23%;max-height:24vh}.card{padding:20px}h1{font-size:36px}}
+</style>
+</head>
+<body>
+<div id="game">
+  <div class="cloud c1"></div><div class="cloud c2"></div><div id="horizon"></div>
+  <div id="hud">
+    <div class="pill">SCORE: <span id="score">0</span></div>
+    <div>
+      <button id="pauseBtn">Ⅱ</button>
+      <button id="muteBtn">🔊</button>
+    </div>
+  </div>
+  <img id="player" src="player.jpg" alt="Player">
+  <div id="box"></div>
+  <div id="touchHint">← Drag left/right →</div>
+
+  <div id="overlay">
+    <div class="card">
+      <h1 id="title">SKY DODGE</h1>
+      <p id="instructions">Move the picture left and right to dodge the falling boxes.</p>
+      <div id="message" class="hidden">lavdenabhojyam</div>
+      <p id="final" class="hidden"></p>
+      <button id="startBtn">START GAME</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const player=document.getElementById('player'), box=document.getElementById('box');
+const scoreEl=document.getElementById('score'), overlay=document.getElementById('overlay');
+const startBtn=document.getElementById('startBtn'), pauseBtn=document.getElementById('pauseBtn'), muteBtn=document.getElementById('muteBtn');
+const title=document.getElementById('title'), instructions=document.getElementById('instructions'), message=document.getElementById('message'), final=document.getElementById('final');
+
+let playing=false, paused=false, muted=false, score=0, high=Number(localStorage.getItem('skyDodgeHigh')||0);
+let boxX=0, boxY=-80, speed=3.3, raf=0, last=0, spawnWait=0, dragging=false, audioCtx=null;
+
+function initAudio(){
+  if(!audioCtx) audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+}
+function beep(freq,duration=.12,type='sine'){
+  if(muted)return; initAudio();
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type;o.frequency.value=freq;g.gain.setValueAtTime(.07,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+duration);
+  o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+duration);
+}
+function speak(){
+  if(muted)return;
+  try{speechSynthesis.cancel();let u=new SpeechSynthesisUtterance('lavdenabhojyam');u.rate=.82;u.pitch=.8;speechSynthesis.speak(u)}catch(e){}
+}
+function resetUI(){
+  title.textContent='SKY DODGE';instructions.textContent='Move the picture left and right to dodge the falling boxes.';
+  message.classList.add('hidden');final.classList.add('hidden');startBtn.textContent='START GAME';
+}
+function startGame(){
+  initAudio(); score=0; speed=3.3; spawnWait=0; paused=false; playing=true;
+  scoreEl.textContent='0'; pauseBtn.textContent='Ⅱ'; overlay.classList.add('hidden');
+  player.style.left='50%'; box.style.display='block'; spawnBox(); last=performance.now(); cancelAnimationFrame(raf); raf=requestAnimationFrame(loop);
+}
+function spawnBox(){
+  const max=Math.max(0,innerWidth-64); boxX=Math.random()*max; boxY=-75;
+  box.style.left=boxX+'px';box.style.top=boxY+'px';beep(180,.07,'triangle');
+}
+function rect(el){return el.getBoundingClientRect()}
+function hit(){
+  const a=rect(player), b=rect(box), pad=10;
+  return a.left+pad<b.right-pad && a.right-pad>b.left+pad && a.top+pad<b.bottom-pad && a.bottom-pad>b.top+pad;
+}
+function gameOver(){
+  playing=false;box.style.display='none';cancelAnimationFrame(raf);beep(80,.35,'sawtooth');speak();
+  if(score>high){high=score;localStorage.setItem('skyDodgeHigh',high)}
+  title.textContent='GAME OVER';instructions.classList.add('hidden');message.classList.remove('hidden');
+  final.textContent='Score: '+score+'  •  Best: '+high;final.classList.remove('hidden');startBtn.textContent='PLAY AGAIN';overlay.classList.remove('hidden');
+}
+function loop(t){
+  if(!playing)return;
+  if(!paused){
+    const dt=Math.min(32,t-last);last=t;boxY+=speed*dt/16.67;box.style.top=boxY+'px';
+    if(hit()){gameOver();return}
+    if(boxY>innerHeight){
+      score++;scoreEl.textContent=score;speed=Math.min(10,3.3+score*.16);beep(620,.09,'sine');spawnBox();
+    }
+  } else last=t;
+  raf=requestAnimationFrame(loop);
+}
+function moveTo(clientX){
+  const w=player.getBoundingClientRect().width;
+  let x=clientX;
+  x=Math.max(w/2,Math.min(innerWidth-w/2,x));
+  player.style.left=x+'px';
+}
+game.addEventListener('pointerdown',e=>{if(!playing||paused)return;dragging=true;moveTo(e.clientX);initAudio()});
+game.addEventListener('pointermove',e=>{if(dragging&&playing&&!paused)moveTo(e.clientX)});
+window.addEventListener('pointerup',()=>dragging=false);
+window.addEventListener('keydown',e=>{
+  if(!playing||paused)return;
+  const x=player.getBoundingClientRect().left+player.getBoundingClientRect().width/2+(e.key==='ArrowLeft'?-35:e.key==='ArrowRight'?35:0);
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight')moveTo(x);
+});
+pauseBtn.onclick=()=>{
+  if(!playing)return;paused=!paused;pauseBtn.textContent=paused?'▶':'Ⅱ';
+};
+muteBtn.onclick=()=>{muted=!muted;muteBtn.textContent=muted?'🔇':'🔊';initAudio()};
+startBtn.onclick=startGame;
+player.onerror=()=>{player.alt='Upload your player image as player.jpg';};
+resetUI();
+</script>
+</body>
+</html>

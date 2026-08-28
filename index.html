@@ -139,6 +139,7 @@ muteBtn.onclick=()=>{muted=!muted;muteBtn.textContent=muted?'🔇':'🔊';initAu
 startBtn.onclick=startGame;
 player.onerror=()=>{player.alt='Upload your player image as player.jpg';};
 resetUI();
+const bgMusic=new Audio('modi-ji-bhojyam (1).mp3'); bgMusic.loop=true; bgMusic.volume=1.0; startBtn.onclick=()=>{bgMusic.currentTime=0;bgMusic.play();};
 </script>
 </body>
 </html>
